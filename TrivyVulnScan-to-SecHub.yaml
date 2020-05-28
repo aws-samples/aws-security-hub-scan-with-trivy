@@ -1,0 +1,184 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: For Trivy container vuln scanning CI/CD AWS Security Hub integration Blog Post
+Parameters:
+  TrivyContainerName:
+    Type: String
+    Default: trivy-test
+    Description: Container name to be populated by CodeBuild
+Resources:
+  TrivyECR:
+    Type: AWS::ECR::Repository
+  TrivyCodeCommit:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryDescription: CodeCommit Repo for Trivy Vuln Scan CICD Pipeline
+      RepositoryName: trivy-cicd-code-repo
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+      Policies:
+        - PolicyName: CodeBuildServiceRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codecommit:GitPull
+                Resource: !GetAtt TrivyCodeCommit.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:GetBucketAcl
+                  - s3:GetBucketLocation
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - securityhub:BatchImportFindings
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                Resource: !GetAtt TrivyECR.Arn
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: { Service: codebuild.amazonaws.com }
+            Action:
+              - sts:AssumeRole
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Policies:
+        - PolicyName: CodePipelineServiceRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codecommit:CancelUploadArchive
+                  - codecommit:GetBranch
+                  - codecommit:GetCommit
+                  - codecommit:GetUploadArchiveStatus
+                  - codecommit:UploadArchive
+                Resource: !GetAtt TrivyCodeCommit.Arn
+              - Effect: Allow
+                Action:
+                  - cloudwatch:*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: !GetAtt TrivyCodeBuild.Arn
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: { Service: codepipeline.amazonaws.com }
+            Action:
+              - sts:AssumeRole
+  TrivyCodePipelineArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'trivy-codepipeline-artifacts-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  TrivyCodeBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Description: For Security Hub Trivy Vuln Scanning Blog
+      Environment:
+        ComputeType: BUILD_GENERAL1_LARGE
+        Image: aws/codebuild/standard:3.0
+        PrivilegedMode: True
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: docker_img_name
+            Value: !Ref TrivyContainerName
+          - Name: docker_tag
+            Value: latest
+          - Name: ecr_repo
+            Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${TrivyECR}'
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+      Name: !Sub 'trivy-cicd-build-project-${AWS::AccountId}'
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Source:
+        Type: CODEPIPELINE
+  TrivyCodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Location: !Ref TrivyCodePipelineArtifactBucket
+        Type: S3
+      Name: !Sub 'trivy-scan-cicd-pipeline-${AWS::AccountId}'
+      RestartExecutionOnUpdate: True
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      Stages:
+        -
+          Name: Source
+          Actions:
+            -
+              Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              Configuration:
+                RepositoryName: !GetAtt TrivyCodeCommit.Name
+                BranchName: master
+              OutputArtifacts:
+                -
+                  Name: SourceOutput
+              RunOrder: 1
+        -
+          Name: Build
+          Actions:
+            -
+              InputArtifacts:
+                -
+                  Name: SourceOutput
+              Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref TrivyCodeBuild
+                PrimarySource: SourceOutput
+              RunOrder: 1
