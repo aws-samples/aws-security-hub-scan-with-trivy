@@ -1,0 +1,27 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.8
+    commands:
+      - "apt update"
+      - "apt install rpm -y"
+      - "pip3 install boto3"
+      - "wget https://github.com/aquasecurity/trivy/releases/download/v0.1.6/trivy_0.1.6_Linux-64bit.deb"
+      - "dpkg -i trivy_0.1.6_Linux-64bit.deb"
+  pre_build:
+    commands:
+      - "$(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)"
+      - "docker build -t $docker_img_name:$docker_tag ."
+  build:
+    commands:
+      - trivy -f json -o results.json --exit-code 0 --severity HIGH,MEDIUM,LOW --quiet --auto-refresh $docker_img_name:$docker_tag
+      - trivy -f json -o results.json --exit-code 1 --severity CRITICAL --quiet --auto-refresh $docker_img_name:$docker_tag
+      - docker tag $docker_img_name:$docker_tag $ecr_repo:latest
+      - docker push $ecr_repo:latest
+  post_build:
+    commands:
+      - echo trivy scan completed on `date`
+      - python3 sechub_parser.py
+      - echo Report Sent to Security Hub on `date`
