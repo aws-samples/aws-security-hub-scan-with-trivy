@@ -15,7 +15,6 @@ WORKDIR /app
 
 COPY . .
 
-RUN chmod +x /app/entrypoint.sh \
-	&& npm install
+RUN npm install
 
-CMD ["bash", "/app/entrypoint.sh"]
+CMD ["echo", "The container is built!"]
