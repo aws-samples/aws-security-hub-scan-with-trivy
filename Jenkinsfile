@@ -51,6 +51,6 @@ echo Report Sent to Security Hub on `date`'''
     docker_image = 'vulnerable_image'
     docker_tag = 'latest'
     ecr_repo = '024697031416.dkr.ecr.us-east-1.amazonaws.com/intentionally-vulnerable-image:latest'
-    AWS_DEFAULT_REGION = 'us-east-1'
+    AWS_REGION = 'us-east-1'
   }
 }
