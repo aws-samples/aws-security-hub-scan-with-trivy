@@ -29,7 +29,7 @@ awsAccount = str(getAccount['Account'])
 # retrieve env vars from codebuild
 awsRegion = os.environ['AWS_REGION']
 codebuildBuildArn = "jenkins-blue-ocean-test" # os.environ['CODEBUILD_BUILD_ARN']
-containerName = os.environ['docker_img'] #os.environ['docker_img_name']
+containerName = os.environ['docker_image'] #os.environ['docker_img_name']
 containerTag = os.environ['docker_tag']
 
 # open Trivy vuln report & parse out vuln info
