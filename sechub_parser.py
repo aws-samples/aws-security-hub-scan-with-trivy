@@ -40,7 +40,7 @@ with open('results.json') as json_file:
     else:
         for p in data[0]['Vulnerabilities']:
             cveId = str(p['VulnerabilityID'])
-            cveTitle = str(p['Title'])
+            cveTitle = str(p['Title']) if 'Title' in p else '-' # Some vulnerabilities have no title
             cveDescription = str(p['Description'])
             cveDescription = (cveDescription[:1021] + '..') if len(cveDescription) > 1021 else cveDescription
             packageName = str(p['PkgName'])
