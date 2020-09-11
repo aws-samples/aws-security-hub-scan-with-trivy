@@ -35,83 +35,83 @@ containerTag = os.environ['docker_tag']
 # open Trivy vuln report & parse out vuln info
 with open('results.json') as json_file:
     data = json.load(json_file)
-    if data[0]['Vulnerabilities'] is None:
-        print('No vulnerabilities')
-    else:
-        for p in data[0]['Vulnerabilities']:
-            cveId = str(p['VulnerabilityID'])
-            cveTitle = str(p['Title']) if 'Title' in p else '-' # Some vulnerabilities have no title
-            cveDescription = str(p['Description'])
-            cveDescription = (cveDescription[:1021] + '..') if len(cveDescription) > 1021 else cveDescription
-            packageName = str(p['PkgName'])
-            installedVersion = str(p['InstalledVersion'])
-            fixedVersion = str(p['FixedVersion'])
-            trivySeverity = str(p['Severity'])
-            cveReference = str(p['References'][0])
-            # create ISO 8601 timestamp
-            iso8601Time = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc).isoformat()
-            # map Trivy severity to ASFF severity
-            if trivySeverity == 'LOW':
-                trivyProductSev = int(1)
-                trivyNormalizedSev = trivyProductSev * 10
-            elif trivySeverity == 'MEDIUM':
-                trivyProductSev = int(4)
-                trivyNormalizedSev = trivyProductSev * 10
-            elif trivySeverity == 'HIGH':
-                trivyProductSev = int(7)
-                trivyNormalizedSev = trivyProductSev * 10
-            elif trivySeverity == 'CRITICAL':
-                trivyProductSev = int(9)
-                trivyNormalizedSev = trivyProductSev * 10
-            else:
-                print('No vulnerability information found')
-            try:
-                response = securityhub.batch_import_findings(
-                    Findings=[
-                        {
-                            'SchemaVersion': '2018-10-08',
-                            'Id': containerName + ':' + containerTag + '/' + cveId,
-                            'ProductArn': 'arn:aws:securityhub:' + awsRegion + ':' + ':product/aquasecurity/aquasecurity',
-                            'GeneratorId': codebuildBuildArn,
-                            'AwsAccountId': awsAccount,
-                            'Types': [ 'Software and Configuration Checks/Vulnerabilities/CVE' ],
-                            'CreatedAt': iso8601Time,
-                            'UpdatedAt': iso8601Time,
-                            'Severity': {
-                                'Product': trivyProductSev,
-                                'Normalized': trivyNormalizedSev
-                            },
-                            'Title': 'Trivy found a vulnerability to ' + cveId + ' in container ' + containerName,
-                            'Description': cveDescription,
-                            'Remediation': {
-                                'Recommendation': {
-                                    'Text': 'More information on this vulnerability is provided in the hyperlink',
-                                    'Url': cveReference
-                                }
-                            },
-                            'ProductFields': { 'Product Name': 'Trivy' },
-                            'Resources': [
-                                {
-                                    'Type': 'Container',
-                                    'Id': containerName + ':' + containerTag,
-                                    'Partition': 'aws',
-                                    'Region': awsRegion,
-                                    'Details': {
-                                        'Container': { 'ImageName': containerName + ':' + containerTag },
-                                        'Other': {
-                                            'CVE ID': cveId,
-                                            'CVE Title': cveTitle,
-                                            'Installed Package': packageName + ' ' + installedVersion,
-                                            'Patched Package': packageName + ' ' + fixedVersion
-                                        }
+    for d in data:
+        if d['Vulnerabilities']:
+            for p in d['Vulnerabilities']:
+                cveId = str(p['VulnerabilityID'])
+                cveTitle = str(p['Title']) if 'Title' in p else '-' # Some vulnerabilities have no title
+                cveDescription = str(p['Description'])
+                cveDescription = (cveDescription[:1021] + '..') if len(cveDescription) > 1021 else cveDescription
+                packageName = str(p['PkgName'])
+                installedVersion = str(p['InstalledVersion'])
+                fixedVersion = str(p['FixedVersion']) if 'FixedVersion' in p else '-'
+                trivySeverity = str(p['Severity'])
+                cveReference = str(p['References'][0])
+                # create ISO 8601 timestamp
+                iso8601Time = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc).isoformat()
+                # map Trivy severity to ASFF severity
+                if trivySeverity == 'LOW':
+                    trivyProductSev = int(1)
+                    trivyNormalizedSev = trivyProductSev * 10
+                elif trivySeverity == 'MEDIUM':
+                    trivyProductSev = int(4)
+                    trivyNormalizedSev = trivyProductSev * 10
+                elif trivySeverity == 'HIGH':
+                    trivyProductSev = int(7)
+                    trivyNormalizedSev = trivyProductSev * 10
+                elif trivySeverity == 'CRITICAL':
+                    trivyProductSev = int(9)
+                    trivyNormalizedSev = trivyProductSev * 10
+                else:
+                    print('No vulnerability information found')
+                print( cveId, " : ", trivySeverity, "/",trivyNormalizedSev)
+                try:
+                    #Send findinfs to Security Hub
+                    response = securityhub.batch_import_findings(
+                        Findings=[
+                            {
+                                'SchemaVersion': '2018-10-08',
+                                'Id': containerName + ':' + containerTag + '/' + cveId,
+                                'ProductArn': 'arn:aws:securityhub:' + awsRegion + ':' + ':product/aquasecurity/aquasecurity',
+                                'GeneratorId': codebuildBuildArn,
+                                'AwsAccountId': awsAccount,
+                                'Types': [ 'Software and Configuration Checks/Vulnerabilities/CVE' ],
+                                'CreatedAt': iso8601Time,
+                                'UpdatedAt': iso8601Time,
+                                'Severity': {
+                                    'Product': trivyProductSev,
+                                    'Normalized': trivyNormalizedSev
+                                },
+                                'Title': 'Trivy found a vulnerability to ' + cveId + ' in container ' + containerName,
+                                'Description': cveDescription,
+                                'Remediation': {
+                                    'Recommendation': {
+                                        'Text': 'More information on this vulnerability is provided in the hyperlink',
+                                        'Url': cveReference
                                     }
                                 },
-                            ],
-                            'RecordState': 'ACTIVE'
-                        }
-                    ]
-                )
-                print(response)
-            except Exception as e:
-                print(e)
-                raise
+                                'ProductFields': { 'Product Name': 'Trivy' },
+                                'Resources': [
+                                    {
+                                        'Type': 'Container',
+                                        'Id': containerName + ':' + containerTag,
+                                        'Partition': 'aws',
+                                        'Region': awsRegion,
+                                        'Details': {
+                                            'Container': { 'ImageName': containerName + ':' + containerTag },
+                                            'Other': {
+                                                'CVE ID': cveId,
+                                                'CVE Title': cveTitle,
+                                                'Installed Package': packageName + ' ' + installedVersion,
+                                                'Patched Package': packageName + ' ' + fixedVersion
+                                            }
+                                        }
+                                    },
+                                ],
+                                'RecordState': 'ACTIVE'
+                            }
+                        ]
+                    )
+                except Exception as e:
+                    print(e)
+                    raise
