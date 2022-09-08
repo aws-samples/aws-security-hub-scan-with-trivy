@@ -71,7 +71,7 @@ with open('results.json') as json_file:
                         {
                             'SchemaVersion': '2018-10-08',
                             'Id': containerName + ':' + containerTag + '/' + cveId,
-                            'ProductArn': 'arn:aws:securityhub:' + awsRegion + ':' + ':product/aquasecurity/aquasecurity',
+                            'ProductArn': 'arn:aws:securityhub:' + awsRegion + ':' + awsAccount + ':product/aquasecurity/trivy',
                             'GeneratorId': codebuildBuildArn,
                             'AwsAccountId': awsAccount,
                             'Types': [ 'Software and Configuration Checks/Vulnerabilities/CVE' ],
